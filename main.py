@@ -204,393 +204,208 @@ def getMetro():
 
 async def initGUI(grafo, algorithm: Callable[[str, str], List[str]]):
     
-    # Lista con los nombres de las estacioness
-    nombres : List[str] = list(grafo.nodes) #Convierte NodeView a lista
+    # Lista con los nombres de las estaciones
+    nombres : List[str] = list(grafo.nodes)
     
     # Lista con las coordenadas de las estaciones
     coords:List[Tuple[int]] = [
-        (161,382),#Observatorio
-        (221,323),#Tacubaya
-        (280,264),#Juanacatlan
-        (324,220),#Chapultepec
-        (368,175),#Sevilla
-        (412,131),#Insurgentes
-        (471,131),#Cuauhtemoc
-        (530,131),#Balderas
-        (530,751),#Universidad
-        (530,707),#Copilco
-        (530,663),#M. A. de Quevedo
-        (530,618),#Viveros
-        (530,574),#Coyoacan
-        (530,515),#Zapata
-        (530,471),#División del Norte
-        (530,426),#Eugenia
-        (530,383),#Etiopia
-        (530,323),#Centro Medico
-        (530,220),#Hospital General
-        (530,176),#Niños Heroes
-        (530,57),#Juarez
-        (221,588),#Barranca del Muerto
-        (221,515),#Mixcoac 
-        (221,456),#San Antonio
-        (221,412),#San Pedro de los Pinos
-        (221,249),#Constituyentes
-        (221,175),#Auditorio
-        (221,101),#Polanco
-        (339,323),#Patriotismo
-        (442,323),#Chilpancingo
-        (619,323),#Lazaro Cardenas
-        (309,515),#Insuegentes Sur
-        (412,515),#Hospital 20 de Noviembre
-        (633,515),#Parque de los Venados
-        (722,574)#Eje Central
-        ]
+        (161,382), (221,323), (280,264), (324,220), (368,175), (412,131),
+        (471,131), (530,131), (530,751), (530,707), (530,663), (530,618),
+        (530,574), (530,515), (530,471), (530,426), (530,383), (530,323),
+        (530,220), (530,176), (530,57), (221,588), (221,515), (221,456),
+        (221,412), (221,249), (221,175), (221,101), (339,323), (442,323),
+        (619,323), (309,515), (412,515), (633,515), (722,574)
+    ]
     
-    
-   # ------ Inicialización de Pygame y carga de imágenes ------
-
-    #Inicializa todos los módulos de Pygame que se necesitan
+    # ------ Inicialización de Pygame ------
     pygame.init()
-
-    # Tamano de la mapa del metro
     size = (959,800)
-
-    #Crea la ventana donde se dibujará todo
     screen = pygame.display.set_mode((size))
-    pygame.display.set_caption("Metro CDMX") # Titulo de la ventana que aparece arriba
+    pygame.display.set_caption("Metro CDMX")
 
-
-    # Images:
-
-    # Obtener ruta a la carpeta de imagenes
-    base_path = os.path.dirname(__file__)
+    # ------ CONFIGURACIÓN DE RUTA DE IMÁGENES ------
+    # Usamos os.path.abspath para obtener la ruta absoluta del archivo actual
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    
+    # Definimos explícitamente la carpeta "assets"
     assets_path = os.path.join(base_path, "assets")
     
-    print("Buscando imágenes en:", assets_path)
+    print(f"Buscando imágenes en: {assets_path}")
 
-    # Cargar la imagen del mapa
-    metroMap = pygame.image.load(os.path.join(assets_path, "metroMapCDMX.png")).convert()
-    # Boton start
-    startButton = pygame.image.load(os.path.join(assets_path, "start.png")).convert_alpha() # Ajusta el tamano del boton a (100, 50) pixeles
+    # Función auxiliar para cargar imágenes de forma segura
+    def cargar_imagen(nombre):
+        ruta_completa = os.path.join(assets_path, nombre)
+        if not os.path.exists(ruta_completa):
+            print(f"❌ ERROR CRÍTICO: No encuentro el archivo {nombre} en {assets_path}")
+            # Crear un cuadro rojo de error si falta la imagen para que no se cierre el programa
+            surf = pygame.Surface((50, 50))
+            surf.fill((255, 0, 0))
+            return surf
+        return pygame.image.load(ruta_completa)
+
+    # Carga de imágenes usando la ruta definida
+    metroMap = cargar_imagen("metroMapCDMX.png").convert()
+    
+    startButton = cargar_imagen("start.png").convert_alpha()
     startButton = pygame.transform.scale(startButton, (100, 50))
-    # Crea un rectángulo de colisión del mismo tamaño que la imagen de boton start, necesario para detectar clics
     startButtonRect = startButton.get_rect()
-    # Posicion donde el boton va a estar colocado
     startButtonPos = (100,710)
-    # Mueve el rectángulo a la misma posicion
     startButtonRect = startButtonRect.move(startButtonPos)
 
-    # Boton reset (hacer lo mismo que boton start)
-    resetButton = pygame.image.load(os.path.join(assets_path, "reset.png")).convert_alpha()
+    resetButton = cargar_imagen("reset.png").convert_alpha()
     resetButton = pygame.transform.scale(resetButton, (50, 50))
     resetButtonRect = resetButton.get_rect()
     resetButtonPos = (100,710)
     resetButtonRect = resetButtonRect.move(resetButtonPos)
 
- 
-    # Dibujar los elementos en la ventana
-    screen.blit(metroMap, (0, 0)) #Dibuja la imagen del mapa en la esquina superior izquierda
-    screen.blit(startButton, startButtonPos) #Dibuja el botón Start encima del mapa
+    # -----------------------------------------------------------
 
+    screen.blit(metroMap, (0, 0))
+    screen.blit(startButton, startButtonPos)
 
-    # Crea un objeto fuente para dibujar texto en la pantalla
     font = pygame.font.Font('freesansbold.ttf', 25)
-
-    # We render the texts
     text1 = font.render('Seleccione un origen', True, (0,0,0), (255,255,255))
     text2 = font.render('Seleccione un destino', True, (0,0,0), (255,255,255))
     text3 = font.render('Mostrando ruta...', True, (0,0,0), (255,255,255))
 
-    # We update the screen
-    # (flip updates the whole surface)
     pygame.display.flip()
 
-    # ------------ UI LOOP con fases -------------
-
-    # Declaración de la variable fase
+    # ------------ UI LOOP -------------
     phase=0
-
-    # while True: bucle infinito, mantiene la ventana abierta hasta que el usuario cierre el programa
-    # 5 fases:
-    # Fase 0: boton start no ha sido clicked todavía (esperar a que el usuario presione Start)
-    # Fase 1: botón start ya ha sido clicked, hay que seleccionar estación de origen
-    # Fase 2: seleccionar estación de destino
-    # Fase 3: mostrar pasos de A*
-    # Fase 4: mostrar ruta final y botón Reset. Si clicked, ir a fase 1
+    
+    # Variables globales para el texto
+    str_info_dist = ""
+    str_info_tiempo = ""
 
     while True:
-
-        # Fase 0: boton start no ha sido clicked todavía
+        # Fase 0: Esperando Start
         if phase==0:
-            # Recorrer todos los eventos que ocurren (clics, teclado, cerrar ventana, etc)
             for event in pygame.event.get():
-
-                # If theres a click:
                 if event.type == pygame.MOUSEBUTTONUP: 
-                    pos = pygame.mouse.get_pos()
-                    # Verificar si el click fue en el buton start
-                    if startButtonRect.collidepoint(pos): #verifica si el clic fue dentro del rectangulo de la imagen botón Start
-
-                        # Update the screen
-                        # (blit draws an image on top of another)
-                        screen.blit(metroMap, (0, 0))
-                        screen.blit(text1, (100,710))
-
-                        # We draw the circles in the metro stations
-                        for i in coords:
-                            pygame.draw.circle(screen,(0,0,0),i,6)
-                            pygame.draw.circle(screen,(255,255,255),i,3)
-                            
-                        pygame.display.flip()
-
-                        # Cambia fase
-                        phase=1
-
-                # Si el usuario cerró la ventana
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-
-
-        # Fase 1: botón start ya ha sido clicked, hay que seleccionar estación de origen
-        elif phase==1:
-                for event in pygame.event.get():
-                    if event.type == pygame.MOUSEBUTTONUP:
-                        pos = pygame.mouse.get_pos()
-
-                        # We iterate through all the coords
-                        for i in coords:
-                            # If click distance to the ith-station is less than 5, we detect a collision
-                            if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
-
-                                # Save origin station
-                                origin = nombres[coords.index(i)]
-                                print("Origen seleccionado: ", origin)
-                                # Origin coords
-                                coordsOrigin = i
-
-                                # Actuaizar la ventana
-                                screen.blit(metroMap, (0, 0))
-                                screen.blit(text2, (100,710))
-
-                                # We redraw the station points, except for the origin
-                                for o in coords:
-                                    pygame.draw.circle(screen,(0,0,0),o,6)
-                                    pygame.draw.circle(screen,(255,255,255),o,3)
-
-                                # We redraw the origin in a different style
-                                pygame.draw.circle(screen,(0,0,0),i,7)
-                                pygame.display.flip()
-
-                                # Phase change
-                                phase =2
-                                break
-
-                    # Si el usuario cerró la ventana      
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
-
-        # Fase 2: seleccionar estación de destino
-        elif phase==2:
-                for event in pygame.event.get():
-                    if event.type == pygame.MOUSEBUTTONUP:
-                        pos = pygame.mouse.get_pos()
-                        for i in coords:
-                            # Collision detection
-                            if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
-
-                                # Save destiny station
-                                destiny = nombres[coords.index(i)]
-                                print("Destiny seleccionado: ", destiny)
-                                # Destiny coords
-                                coordsDestiny = i
-                                # Redraw todos los elementos necesarios y actualizar la ventana
-                                screen.blit(metroMap, (0, 0))
-
-                                # We redraw the station points, except for the destiny
-                                for o in coords:
-                                    pygame.draw.circle(screen,(0,0,0),o,6)
-                                    pygame.draw.circle(screen,(255,255,255),o,3)
-
-                                # We redraw the origin and the destiny in a different style
-                                pygame.draw.circle(screen,(0,0,0),coordsOrigin,7)
-                                pygame.draw.circle(screen,(0,0,0),coordsDestiny,7)
-
-                                screen.blit(text3, (100,710))
-                                pygame.display.flip()
-
-                                # Phase change
-                                phase=3
-
-                                # Now we call the algorithm.
-                                # It returns an intermediatePath (the steps taken by the algorithm)
-                                # and a route (the final, optimal route)
-                                ############ intermediatePath = 
-                                route = algorithm(origin, destiny)
-
-                                break
-
-                    # Si el usuario cerró la ventana
-                    if event.type == pygame.QUIT:
-                        pygame.quit()
-                        sys.exit()
-
-        # Fase 3: mostrar pasos de A*
-        elif phase==3:
-
-            for event in pygame.event.get():
-                 # Si el usuario cerró la ventana
-                 if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-            
-            # Draw lights until all the stations are drawn.
-            # In this loop we show the intermidiate steps of the algorithm
-            ####### for station in intermediatePath:
-            print("Ruta optima: ", route)
-            for station in route:
-                await asyncio.sleep(0.5) # Time between drawings of stations
-                pygame.draw.circle(screen,(255, 51, 153),coords[nombres.index(station)],7)
-                pygame.draw.circle(screen,(0,0,0),coords[nombres.index(station)],3)
-                pygame.display.flip()
-                
-            
-            # phase change
-            phase=4
-        
-        # Fase 4: mostrar ruta final y botón Reset. Si clicked, ir a fase 1
-        elif phase==4:
-            # We reset the drawings
-            screen.blit(metroMap, (0, 0))
-            
-            # We draw the (final) path
-            for station in route:
-                pygame.draw.circle(screen,(255, 255, 0),coords[nombres.index(station)],7)
-                pygame.draw.circle(screen,(0,0,0),coords[nombres.index(station)],3)
-            # We draw the reset button
-            screen.blit(resetButton, resetButtonPos)
-
-            # We update the screen
-            pygame.display.flip()
-
-            # We are now going to check if the reset button has been clicked
-            for event in pygame.event.get():
-                # If theres a click:
-                if event.type == pygame.MOUSEBUTTONUP:
-                    pos = pygame.mouse.get_pos()
-                    # We check if the click was in the reset button
-                    if resetButtonRect.collidepoint(pos): # This checks if the click was inside the rectangle of the image
-                        # We reset the GUI
-                        screen.blit(metroMap, (0, 0))
-                        screen.blit(startButton, startButtonPos)
-                        pygame.display.flip()
-                        phase=0 #Cambia fase a cero para empezar el proceso de nuevo
-                
-                # Si el usuario cerró la ventana
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
-
-        await asyncio.sleep(0)
-
-    """ # Variables de estado
-    phase = 0
-    origin = ""
-    destiny = ""
-    coordsOrigin = (0,0)
-    coordsDestiny = (0,0)
-    route = []
-
-    # UI LOOP
-    while True:
-        if phase==0:
-            for event in pygame.event.get():
-                if event.type == pygame.MOUSEBUTTONUP:
                     pos = pygame.mouse.get_pos()
                     if startButtonRect.collidepoint(pos):
                         screen.blit(metroMap, (0, 0))
-                        screen.blit(text1, ButtonPos)
+                        screen.blit(text1, (100,710))
                         for i in coords:
                             pygame.draw.circle(screen,(0,0,0),i,6)
                             pygame.draw.circle(screen,(255,255,255),i,3)
                         pygame.display.flip()
                         phase=1
+
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
 
+        # Fase 1: Seleccionar Origen
         elif phase==1:
-            for event in pygame.event.get():
-                if event.type == pygame.MOUSEBUTTONUP:
-                    pos = pygame.mouse.get_pos()
-                    for i in coords:
-                        if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
-                            origin = nombres[coords.index(i)]
-                            print("Origen seleccionado: ", origin)
-                            coordsOrigin = i
-                            screen.blit(metroMap, (0, 0))
-                            screen.blit(text2, (250,30))
-                            for o in coords:
-                                pygame.draw.circle(screen,(0,0,0),o,6)
-                                pygame.draw.circle(screen,(255,255,255),o,3)
-                            pygame.draw.circle(screen,(0,0,0),i,7)
-                            pygame.display.flip()
-                            phase = 2
-                            break
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+                for event in pygame.event.get():
+                    if event.type == pygame.MOUSEBUTTONUP:
+                        pos = pygame.mouse.get_pos()
+                        for i in coords:
+                            if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
+                                origin = nombres[coords.index(i)]
+                                print("Origen seleccionado: ", origin)
+                                coordsOrigin = i
+                                screen.blit(metroMap, (0, 0))
+                                screen.blit(text2, (100,710))
+                                for o in coords:
+                                    pygame.draw.circle(screen,(0,0,0),o,6)
+                                    pygame.draw.circle(screen,(255,255,255),o,3)
+                                pygame.draw.circle(screen,(0,0,0),i,7)
+                                pygame.display.flip()
+                                phase =2
+                                break     
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
 
+        # Fase 2: Seleccionar Destino y CÁLCULOS
         elif phase==2:
-            for event in pygame.event.get():
-                if event.type == pygame.MOUSEBUTTONUP:
-                    pos = pygame.mouse.get_pos()
-                    for i in coords:
-                        if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
-                            destiny = nombres[coords.index(i)]
-                            print("Destiny seleccionado: ", destiny)
-                            coordsDestiny = i
-                            screen.blit(metroMap, (0, 0))
-                            for o in coords:
-                                pygame.draw.circle(screen,(0,0,0),o,6)
-                                pygame.draw.circle(screen,(255,255,255),o,3)
-                            pygame.draw.circle(screen,(0,0,0),coordsOrigin,7)
-                            pygame.draw.circle(screen,(0,0,0),coordsDestiny,7)
-                            screen.blit(text3, (300,60))
-                            pygame.display.flip()
-                            
-                            phase=3
-                            # LLAMADA AL ALGORITMO
-                            route = algorithm(origin, destiny)
-                            break
-                if event.type == pygame.QUIT:
-                    pygame.quit()
-                    sys.exit()
+                for event in pygame.event.get():
+                    if event.type == pygame.MOUSEBUTTONUP:
+                        pos = pygame.mouse.get_pos()
+                        for i in coords:
+                            if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
+                                destiny = nombres[coords.index(i)]
+                                print("Destiny seleccionado: ", destiny)
+                                coordsDestiny = i
+                                
+                                screen.blit(metroMap, (0, 0))
+                                for o in coords:
+                                    pygame.draw.circle(screen,(0,0,0),o,6)
+                                    pygame.draw.circle(screen,(255,255,255),o,3)
+                                pygame.draw.circle(screen,(0,0,0),coordsOrigin,7)
+                                pygame.draw.circle(screen,(0,0,0),coordsDestiny,7)
+                                screen.blit(text3, (100,710))
+                                pygame.display.flip()
+                                phase=3
 
+                                route = algorithm(origin, destiny)
+
+                                # --- CÁLCULOS ---
+                                VELOCIDAD_MS = 11.11
+                                TIEMPO_PARADA_MIN = 0.5
+                                total_metros = 0
+                                try:
+                                    for k in range(len(route) - 1):
+                                        total_metros += grafo[route[k]][route[k+1]]['weight']
+                                except KeyError:
+                                    total_metros = 0
+
+                                tiempo_viaje_min = (total_metros / VELOCIDAD_MS) / 60
+                                num_paradas = max(0, len(route) - 2)
+                                tiempo_total_min = round(tiempo_viaje_min + (num_paradas * TIEMPO_PARADA_MIN), 1)
+                                dist_km = round(total_metros / 1000, 2)
+
+                                str_info_dist = f"Distancia: {dist_km} km"
+                                str_info_tiempo = f"Tiempo aprox: {tiempo_total_min} min"
+                                print(f"Ruta: {route}\n{str_info_dist}\n{str_info_tiempo}")
+                                # ----------------
+                                break
+
+                    if event.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+
+        # Fase 3: Animación
         elif phase==3:
             for event in pygame.event.get():
                  if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
             
-            # Animacion de la ruta
             for station in route:
-                await asyncio.sleep(0.2) 
-                idx = nombres.index(station)
-                pygame.draw.circle(screen,(255, 51, 153),coords[idx],7)
-                pygame.draw.circle(screen,(0,0,0),coords[idx],3)
+                await asyncio.sleep(0.5)
+                pygame.draw.circle(screen,(255, 51, 153),coords[nombres.index(station)],7)
+                pygame.draw.circle(screen,(0,0,0),coords[nombres.index(station)],3)
                 pygame.display.flip()
             
             phase=4
         
+        # Fase 4: Resultado y Caja Blanca
         elif phase==4:
             screen.blit(metroMap, (0, 0))
             for station in route:
-                idx = nombres.index(station)
-                pygame.draw.circle(screen,(255, 255, 0),coords[idx],7)
-                pygame.draw.circle(screen,(0,0,0),coords[idx],3)
-            screen.blit(resetButton, ButtonPos)
+                pygame.draw.circle(screen,(255, 255, 0),coords[nombres.index(station)],7)
+                pygame.draw.circle(screen,(0,0,0),coords[nombres.index(station)],3)
+            screen.blit(resetButton, resetButtonPos)
+
+            # --- DIBUJO CAJA BLANCA ---
+            caja_x, caja_y = 170, 670
+            ancho_caja, alto_caja = 300, 75
+
+            pygame.draw.rect(screen, (255, 255, 255), (caja_x, caja_y, ancho_caja, alto_caja))
+            pygame.draw.rect(screen, (0, 0, 0), (caja_x, caja_y, ancho_caja, alto_caja), 2)
+
+            if str_info_dist == "": str_info_dist = "Calculando..."
+            
+            t_dist = font.render(str_info_dist, True, (0, 0, 0))
+            t_time = font.render(str_info_tiempo, True, (0, 0, 0))
+
+            screen.blit(t_dist, (caja_x + 10, caja_y + 10))
+            screen.blit(t_time, (caja_x + 10, caja_y + 35))
+            # --------------------------
+
             pygame.display.flip()
 
             for event in pygame.event.get():
@@ -598,20 +413,19 @@ async def initGUI(grafo, algorithm: Callable[[str, str], List[str]]):
                     pos = pygame.mouse.get_pos()
                     if resetButtonRect.collidepoint(pos):
                         screen.blit(metroMap, (0, 0))
-                        screen.blit(startButton, ButtonPos)
+                        screen.blit(startButton, startButtonPos)
                         pygame.display.flip()
+                        str_info_dist = ""
+                        str_info_tiempo = ""
                         phase=0
+                
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
 
-        await asyncio.sleep(0) """
+        await asyncio.sleep(0)
 
-
-
-
-
-
+    
 
 
 async def main():
