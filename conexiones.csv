@@ -1,37 +1,44 @@
 Origen,Destino,Peso
-Balderas,Cuauhtémoc,409
+Balderas_1,Cuauhtémoc,409
 Cuauhtémoc,Insurgentes,793
 Insurgentes,Sevilla,645
 Sevilla,Chapultepec,501
 Chapultepec,Juanacatlán,973
-Juanacatlán,Tacubaya,1158
-Tacubaya,Observatorio,1262
-Juárez,Balderas,659
-Balderas,Niños Héroes,665
+Juanacatlán,Tacubaya_1,1158
+Tacubaya_1,Observatorio,1262
+Juárez,Balderas_3,659
+Balderas_3,Niños Héroes,665
 Niños Héroes,Hospital General,559
-Hospital General,Centro Médico,653
-Centro Médico,Etiopía,1119
+Hospital General,Centro Médico_3,653
+Centro Médico_3,Etiopía,1119
 Etiopía,Eugenia,950
 Eugenia,División del Norte,715
-División del Norte,Zapata,794
-Zapata,Coyoacán,1153
+División del Norte,Zapata_3,794
+Zapata_3,Coyoacán,1153
 Coyoacán,Viveros,908
 Viveros,Miguel Ángel de Quevedo,824
 Miguel Ángel de Quevedo,Copilco,1295
 Copilco,Universidad,1306
 Polanco,Auditorio,812
 Auditorio,Constituyentes,1430
-Constituyentes,Tacubaya,1005
-Tacubaya,San Pedro de los Pinos,1084
+Constituyentes,Tacubaya_7,1005
+Tacubaya_7,San Pedro de los Pinos,1084
 San Pedro de los Pinos,San Antonio,606
-San Antonio,Mixcoac,788
-Mixcoac,Barranca del Muerto,1476
-Lázaro Cárdenas,Centro Médico,1059
-Centro Médico,Chilpancingo,1152
+San Antonio,Mixcoac_7,788
+Mixcoac_7,Barranca del Muerto,1476
+Lázaro Cárdenas,Centro Médico_9,1059
+Centro Médico_9,Chilpancingo,1152
 Chilpancingo,Patriotismo,955
-Patriotismo,Tacubaya,1133
+Patriotismo,Tacubaya_9,1133
 Eje Central,Parque de los Venados,1280
-Parque de los Venados,Zapata,563
-Zapata,Hospital 20 de Noviembre,450
+Parque de los Venados,Zapata_12,563
+Zapata_12,Hospital 20 de Noviembre,450
 Hospital 20 de Noviembre,Insurgentes Sur,725
-Insurgentes Sur,Mixcoac,651
+Insurgentes Sur,Mixcoac_12,651
+Mixcoac_7,Mixcoac_12,2569
+Zapata_3,Zapata_12,2202
+Centro Médico_9,Centro Médico_3,1468
+Balderas_1,Balderas_3,1468
+Tacubaya_1,Tacubaya_7,2202
+Tacubaya_1,Tacubaya_9,2202
+Tacubaya_7,Tacubaya_9,2202
