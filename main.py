@@ -9,33 +9,171 @@ import asyncio
 
 
 
+
+
+
+# ---------------- FUNCION HEURISTICA ---------------- #
+"""
+La funcion heuristica: por distancia haversine
+"""
+def h_distanciaHaversiana(grafo:nx.Graph, nodoActual, nodoObjetivo):
+   
+    lat1 = grafo.nodes[nodoActual]['lat']
+    lon1 = grafo.nodes[nodoActual]['lon']
+    lat2 = grafo.nodes[nodoObjetivo]['lat']
+    lon2 = grafo.nodes[nodoObjetivo]['lon']
+    return haversine_distance(lat1, lon1, lat2, lon2)
+
+
+
+
+
+# ---------------- ALGORITMO A* ---------------- #
 '''
-MODULO A* CON NETWORKX
-Corregido para coincidir con atributos 'lat' y 'lon' de metroCDMX.py
+Algoritmo A*
+
+@Params:
+    * graph: grafo no dirigido con pesos. 
+            Los vertices deben de tener un atributo llamado 'nombre', donde cada 'nombre' es unico
+            Las aristas deben tener el atributo 'peso'
+    * heuristic: la funcion heuristica
+    * start_vertex: el atributo 'nombre' del vertice de inicio
+    * end_vertex: el atributo 'nombre' del vertice meta
+
+    reuturn una lista de todos nodos expanditos por orden, y lista de camino optimo (no limpiado en nuestro caso)
 '''
 
-# Variable global para almacenar el grafo
-GRAFO_GLOBAL = None
+def AStar(graph: nx.Graph, heuristic: Callable[[nx.Graph, str, str], float], start_vertex: str, end_vertex: str) -> Tuple[List[str], List[str]]:
+
+    # Para simplificar cálculos, si el origen es igual al destino simplemente devolvemos la respuesta esperada...
+    if start_vertex == end_vertex: 
+        return [start_vertex], [start_vertex]
+
+    # Esta es una lista que contiene todos los nodos (EN ORDEN) visitados por el algoritmo
+    intermediatePath: List[str] = []
+
+    # Primero obtenemos el vértice inicial y el vértice objetivo
+    start = start_vertex
+    goal = end_vertex
+
+    # Conjunto de nodos descubiertos que pueden ser (re)explorados
+    openSet: List[str] = [start]
+
+    # Para un vértice 'n', cameFrom[n] es el nodo que lo precede en el camino de menor coste desde el inicio
+    cameFrom: Dict[str, str] = dict()
+
+    # El gScore de un nodo hace referencia al coste del camino más barato desde 'start' hasta ese nodo
+    # Implementamos gScore como un diccionario {vértice : gScore}
+    gScore: Dict[str, float] = {node: float('inf') for node in graph.nodes} 
+    gScore[start] = 0
+
+    # El fScore de un nodo indica "qué tan bueno" es el mejor camino hacia el final si pasa por ese nodo
+    fScore: Dict[str, float] = {node: float('inf') for node in graph.nodes}
+    fScore[start] = heuristic(graph, start, goal)
+
+    # Mientras openSet no esté vacío...
+    while len(openSet) != 0:
+
+        # Nodo que vamos a expandir. Es el que tiene el menor valor de fScore dentro de openSet
+        current = min(openSet, key=fScore.get)
+
+        intermediatePath.append(current)
+
+        # Si el nodo actual es el objetivo, ya encontramos la ruta óptima
+        if current == goal: 
+            # Ruta final, óptima     
+            finalRoute = getPath(cameFrom, current, start)
+            return intermediatePath, finalRoute
+
+        # Quitamos el nodo que estamos expandiendo del openSet (equivalente a añadirlo a una "lista cerrada")
+        openSet.remove(current)
+
+        # Ahora expandimos el nodo:
+        adjacent = graph.neighbors(current)  # Objeto iterable con los IDs de los vecinos del vértice actual
+
+        for neighbor in adjacent:
+            # Obtenemos el peso de la arista que conecta 'current' y 'neighbor'
+            edge_data = graph[current][neighbor]
+            weight = edge_data.get('weight', 1) 
+
+            # Calculamos el nuevo gScore para cada vecino. Si es menor al que tenía antes,
+            # significa que encontramos un camino mejor hacia ese nodo vecino.
+            new_gScore = gScore[current] + weight
+            
+            if new_gScore < gScore[neighbor]:
+                # Actualizamos la información del vecino con el nuevo camino más corto
+                cameFrom[neighbor] = current
+                gScore[neighbor] = new_gScore
+                fScore[neighbor] = new_gScore + heuristic(graph, start, goal)
+
+                # Si el vecino no estaba en openSet, lo añadimos (para seguir explorando desde él)
+                if neighbor not in openSet:
+                    openSet.append(neighbor)
+
+        
+
+    # Si no encontramos un camino, devolvemos una lista vacía para indicar que no existe ruta
+    return [], [] 
+
+
+
+# ---------------- FUNCION PARA OBTENER EL CAMINO OPTIMO LIMPIO---------------- #
+'''
+Funcion para comprimir los nodos (estaciones) duplicados del camino óptimo, y eliminar los nodos temporales
+(los duplicados fue una estrategia para tener en cuenta el tiempo de transbordo miantras buscando el camino óptimo con A*)
+(los nodos temporales fue creados si el origen o destino es un transbordo)
+Ejemplo: [..., Zapata_12, Zapata_3, ...] --> [..., Zapata, Zapata, ...] --> [..., Zapata, ...]
+         [..., Mixcoac_12, ...] --> [..., Mixcoac, ...]
+'''
+def caminoOptimo_limpio(camino):
+    ruta_limpio = []
+    num_paradas : int = 0 #Todas excepto la última estación(va a ser usado en la funcion tiempoCaminoOptimo)
+
+    # Paso 1: quitar parte "_número" de cada nodo
+    rutaAux = [nodo.split('_')[0] for nodo in camino]
+
+    # Paso 2: comprimir nodos consecutivos repetidos (solo añadimos el nodo si es distinto al anterior) y ignorar nodos temporales
+    for nodo in rutaAux:
+        if nodo in ['ORIGEN', 'DESTINO']:
+            continue  # ignorar nodos temporales
+        if not ruta_limpio or ruta_limpio[-1] != nodo:
+            ruta_limpio.append(nodo)
+
+    num_paradas = max(0, len(ruta_limpio)-1)
+
+    return ruta_limpio, num_paradas
+
+
+
+
 
 # ---------------- FUNCIONES AUXILIARES ---------------- #
 
-def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Calcula la distancia Haversine (geodésica) en Kilómetros."""
-    R = 6371.0  # Radio de la Tierra en km
+'''
+Funcion para calcular la distanca heversiana:
+Calcula la distancia del círculo máximo entre dos puntos de la Tierra (especificados en grados decimales)
+'''
+def haversine_distance(lat1, lon1, lat2, lon2):
 
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    
-    a = (math.sin(dlat / 2) ** 2 +
-         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
-         math.sin(dlon / 2) ** 2)
-    
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    
-    return R * c
+    lon1, lat1, lon2, lat2 = map(math.radians, [lon1, lat1, lon2, lat2])
 
+    dlon = lon2 - lon1 
+    dlat = lat2 - lat1 
+    a = math.sin(dlat/2)**2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon/2)**2
+    c = 2 * math.asin(math.sqrt(a)) 
+    r = 6371000 
+    return c * r
+
+
+
+'''
+Function that reconstructs the path from 'current' to 'start' node and dictionary indicating 
+the "parent" node of each node in the path.
+The path is a list "path" that contains IN ORDER (from the starting vertex to the finish vertex) the names
+of the vertices from the path
+Reconstruye el camino desde el nodo actual hasta el inicio.
+'''
 def getPath(cameFrom: Dict[str, str], current: str, start: str) -> List[str]:
-    """Reconstruye el camino desde el nodo actual hasta el inicio."""
     path = [current]
     nextVertexInPath = current
     while nextVertexInPath != start:
@@ -44,115 +182,122 @@ def getPath(cameFrom: Dict[str, str], current: str, start: str) -> List[str]:
         nextVertexInPath = parent
     return path
 
-# ---------------- HEURÍSTICAS ---------------- #
 
-def MSTHeuristic(graph: nx.Graph, start: str, goal: str, current: str, openSet: List[str], cameFrom: Dict[str, str]):
-    currentPath = getPath(cameFrom, current, start)
-    edges_to_remove = [(currentPath[i-1], currentPath[i]) for i in range(1, len(currentPath))]
 
-    g = graph.copy() 
-    g.remove_edges_from(edges_to_remove)
+'''
+Calcula longitud de un camino optimo en kilometro 
+(usarlo con camino óptimo no limpiado todavía dado por A*)
+'''
+def lengthCaminoOptimo(grafo : nx.Graph, camino):
+    distancia_total = 0
+    # Recorre pares consecutivos de nodos para obtener el peso entre ellos
+    for i in range(len(camino) - 1):
+        nodo1 = camino[i]
+        nodo2 = camino[i+1]
+        #El peso entre dos nodos duplicados consecutivos no cuanta para calcular longitud del camino óptimo
+        if(("_" in nodo1 and nodo1.split("_")[-1].isdigit()) and 
+           ("_" in nodo2 and nodo2.split("_")[-1].isdigit())): #combrobar que son duplicados, si lo son, lo ignoramos
+            continue
+        else:
+            distancia_total += grafo[nodo1][nodo2]["weight"] # metro(m)
+    return round(distancia_total/1000, 2)
+
+
+
+
+'''
+Calcula tiempo de viaje (en minutos) de un camino optimo con una velocidad constante (km/h) 
+(usarlo con camino óptimo dado por A* pero no limpiado todavia)
+'''
+def tiempoCaminoOptimo(grafo : nx.Graph, camino, vel:float, num_paradas:int):
+    distancia_total = 0
+    TIEMPO_PARADA_MIN = 0.4 #Tiempo de espera en cada parada en minuto (la parada origen incluido)
+
+    # Recorre pares consecutivos de nodos para obtener el peso entre ellos
+    for i in range(len(camino) - 1):
+        distancia_total += grafo[camino[i]][camino[i+1]]["weight"] # metro(m)
+
+    distancia_total = round(distancia_total/1000, 2)
+    tiempo = (distancia_total/vel) * 60 # minutos
+    return round(tiempo + TIEMPO_PARADA_MIN*num_paradas)
     
-    if g.is_directed():
-        g = g.to_undirected()
 
-    mst_edges = nx.minimum_spanning_edges(g, weight='weight', data=True)
-    return sum(edge_data['weight'] for u, v, edge_data in mst_edges)
 
-def djikstraHeuristic(graph: nx.Graph, start: str, goal: str, current: str, openSet: List[str], cameFrom: Dict[str, str]):
-    currentPath = getPath(cameFrom, current, start)
-    edges_to_remove = [(currentPath[i-1], currentPath[i]) for i in range(1, len(currentPath))]
 
-    g = graph.copy()
-    g.remove_edges_from(edges_to_remove)
 
-    try:
-        return nx.shortest_path_length(g, source=current, target=goal, weight='weight')
-    except nx.NetworkXNoPath:
-        return float('inf')
+"""
+Prepara el grafo para origen y destino que sean transbordos.
+Conecta los duplicados de cada estación con aristas de peso 0 y crea nodos temporales ORIGEN_TEMP y DESTINO_TEMP para A*.
 
-def euclideanDistanceHeuristic(graph: nx.Graph, start: str, goal: str, current: str, openSet: List[str], cameFrom: Dict[str, str]):
-    """
-    Implementa la distancia geodésica.
-    Usa 'lat' y 'lon' para coincidir con tu metroCDMX.py
-    """
-    curr_data = graph.nodes[current]
-    goal_data = graph.nodes[goal]
+    Returns:
+        origen_temp: nodo temporal de origen
+        destino_temp: nodo temporal de destino
+"""
+
+def preparar_grafo_transbordos(grafo: nx.Graph, origen: str, destino: str, transbordos: list):
     
-    # AQUÍ ESTABA EL ERROR: Cambiado de 'long' a 'lon'
-    return haversine_distance(curr_data["lat"], curr_data["lon"], 
-                              goal_data["lat"], goal_data["lon"])
+    # --- Nodo temporal de origen ---
+    #Si el origen es un transbordo
+    if origen in transbordos:
+        nodos_origen = [n for n in grafo.nodes if n.startswith(origen)]
+        origen_temp = 'ORIGEN_TEMP'
+        #Crear nodo temporal
+        lat = grafo.nodes[nodos_origen[0]]['lat']
+        lon = grafo.nodes[nodos_origen[0]]['lon']
+        grafo.add_node(origen_temp, lat=lat, lon=lon)
+        #Conectar nodo temporal con los duplicados con peso 0
+        for n in nodos_origen:
+            grafo.add_edge(origen_temp, n, weight=0)
+    else:
+        origen_temp = origen
 
-# ---------------- ALGORITMO PRINCIPAL ---------------- #
+    # --- Nodo temporal de destino ---
+    #Si el origen es un transbordo
+    if destino in transbordos:
+        nodos_destino = [n for n in grafo.nodes if n.startswith(destino)]
+        destino_temp = 'DESTINO_TEMP'
+        #Crear nodo temporal
+        lat = grafo.nodes[nodos_destino[0]]['lat']
+        lon = grafo.nodes[nodos_destino[0]]['lon']
+        grafo.add_node(destino_temp, lat=lat, lon=lon)
+        #Conectar nodo temporal con los duplicados con peso 0
+        for n in nodos_destino:
+            grafo.add_edge(destino_temp, n, weight=0)
+    else:
+        destino_temp = destino
 
-def AStar(graph: nx.Graph, 
-          heuristic: Callable, 
-          start_vertex: str, 
-          end_vertex: str) -> Tuple[List[str], List[str]]:
+    return origen_temp, destino_temp
 
-    if start_vertex == end_vertex: 
-        return [start_vertex], [start_vertex]
 
-    intermediatePath: List[str] = []
-    start = start_vertex
-    goal = end_vertex
+"""
+Elimina los nodos temporales creados en la preparación del grafo.
+"""
+def eliminar_nodos_temporales(grafo: nx.Graph):
+    for nodo in ['ORIGEN_TEMP', 'DESTINO_TEMP']:
+        if nodo in grafo:
+            grafo.remove_node(nodo)
 
-    openSet: List[str] = [start]
-    cameFrom: Dict[str, str] = dict()
 
-    gScore: Dict[str, float] = {node: float('inf') for node in graph.nodes} 
-    gScore[start] = 0
 
-    fScore: Dict[str, float] = {node: float('inf') for node in graph.nodes}
+############### COMPROBACIONES ############################
+'''
+if __name__ == "__main__":
+
+    transbordos = ["Mixcoac", "Zapata", "Centro Médico", "Balderas", "Tacubaya"]
     
-    try:
-        h_val = heuristic(graph, start, goal, start, openSet, cameFrom)
-    except Exception:
-        h_val = 0
-    fScore[start] = h_val
+    metro_grafo = metroCDMX.getMetro()
 
-    while len(openSet) != 0:
-        current = min(openSet, key=fScore.get)
-        intermediatePath.append(current)
-
-        if current == goal:      
-            finalRoute = getPath(cameFrom, current, start)
-            return intermediatePath, finalRoute
-
-        openSet.remove(current)
-
-        for neighbor in graph.neighbors(current):
-            edge_data = graph[current][neighbor]
-            weight = edge_data.get('weight', 1) 
-
-            new_gScore = gScore[current] + weight
-            
-            if new_gScore < gScore[neighbor]:
-                cameFrom[neighbor] = current
-                gScore[neighbor] = new_gScore
-                fScore[neighbor] = new_gScore + heuristic(graph, start, goal, neighbor, openSet, cameFrom)
-
-                if neighbor not in openSet:
-                    openSet.append(neighbor)
-    
-    return [], []
-
-# ---------------- ADAPTADORES UI ---------------- #
-
-def inicializar_algoritmo(graph: nx.Graph):
-    global GRAFO_GLOBAL
-    GRAFO_GLOBAL = graph
-    print(f"Grafo inicializado correctamente (Nodos: {len(graph.nodes)})")
-
-def caminoOptimo(start_vertex: str, end_vertex: str) -> List[str]:
-    if GRAFO_GLOBAL is None:
-        print("Error: Grafo no inicializado.")
-        return []
-
-    # Llamamos al algoritmo con la heurística correcta
-    intermediate, final = AStar(GRAFO_GLOBAL, euclideanDistanceHeuristic, start_vertex, end_vertex)
-    return final
-
+    origen = "Observatorio"
+    destino = "Coyoacán"
+    origen_temp, destino_temp = preparar_grafo_transbordos(metro_grafo, origen, destino, transbordos)
+    nodosExpantidos, camino = AStar(metro_grafo, h_distanciaHaversiana, origen_temp, destino_temp)
+    print("Nodos expantidos en orden:", nodosExpantidos, "\n")
+    print("Nodos expantidos en orden:", camino, "\n")
+    print("Camino optimo:", caminoOptimo_limpio(camino)[0], "\n")
+    numParada = caminoOptimo_limpio(camino)[1]
+    print("Longtud(km): ", lengthCaminoOptimo(metro_grafo, camino), "  Tiempo(min):", tiempoCaminoOptimo(metro_grafo, camino, 22, numParada), "\n")
+    eliminar_nodos_temporales(metro_grafo)
+'''
 
 
 
@@ -178,13 +323,32 @@ def getMetro():
         reader = csv.DictReader(file)
         conexiones = list(reader)
 
-    # Crear nodos
+
+    # Crear nodos (todas las estaciones excepto los transbordos)
+    transbordos = {"Mixcoac", "Zapata", "Centro Médico", "Balderas", "Tacubaya"}
     for fila in coords:
-        grafo.add_node(
-            fila['Nombre'],
-            lat=float(fila['Latitud']),
-            lon=float(fila['Longitud'])
-        )
+        nombre = fila['Nombre']
+        if nombre not in transbordos:
+            grafo.add_node(
+                nombre,
+                lat=float(fila['Latitud']),
+                lon=float(fila['Longitud'])
+            )
+    
+    #Crear nodos duplicados o triplicados para los transbordos 
+    # (los nodos duplicados representa misma posicion fisica (mismas coordenadas), la heurística no se distorsiona)
+    grafo.add_node("Mixcoac_7", lat=19.375891, lon=-99.187531)
+    grafo.add_node("Mixcoac_12", lat=19.375891, lon=-99.187531)
+    grafo.add_node("Zapata_3", lat=19.370952, lon=-99.164937)
+    grafo.add_node("Zapata_12", lat=19.370952, lon=-99.164937)
+    grafo.add_node("Centro Médico_3", lat=19.406637, lon=-99.155753)
+    grafo.add_node("Centro Médico_9", lat=19.406637, lon=-99.155753)
+    grafo.add_node("Balderas_1", lat=19.42744, lon=-99.149036)
+    grafo.add_node("Balderas_3", lat=19.42744, lon=-99.149036)
+    grafo.add_node("Tacubaya_1", lat=19.403439, lon=-99.187102) #Tacubaya es transbordo entre tres líneas, hay que triplicarlo
+    grafo.add_node("Tacubaya_7", lat=19.403439, lon=-99.187102)
+    grafo.add_node("Tacubaya_9", lat=19.403439, lon=-99.187102)
+
 
     # Crear aristas
     for fila in conexiones:
@@ -193,254 +357,379 @@ def getMetro():
             fila['Destino'],
             weight=float(fila['Peso'])
         )
-
-    return grafo
-
-
-
-
-   
-
-
-async def initGUI(grafo, algorithm: Callable[[str, str], List[str]]):
     
-    # Lista con los nombres de las estaciones
-    nombres : List[str] = list(grafo.nodes)
+    # Con velocidad 22km/h = 367m/min: 
+    # Tiempo de cambio entre linea 7 y 12 en Mixcoac: conexión entre Mixcoac_7 y Mixcoac_12 --> 7min, equivale a 2569m (peso)
+    # Conexión entre Zapata_3 y Zapata_12 --> 6min, equivale a 2202m 
+    # Conexión entre Centro Médico_3 y Centro Médico_9 --> 4min, equivale a 1468m 
+    # Conexión entre Balderas_1 y Balderas_3 --> 4min, equivale a 1468m 
+    # Conexión entre Tacubaya_1 y Tacubaya_7 --> 6min, equivale a 2202m 
+    # Conexión entre Tacubaya_1 y Tacubaya_9 --> 6min, equivale a 2202m 
+    # Conexión entre Tacubaya_7 y Tacubaya_9 --> 6min, equivale a 2202m 
+
+
+    return grafo   
+
+async def initGUI(grafo, algorithm: Callable, heuristic : Callable):
+#async def initGUI(grafo, algorithm: Callable[[nx.Graph, str, str], Tuple[List[str], List[str]]], heuristic : Callable[[nx.Graph, str, str], float]):
+     
+    #Lista de transbordos:
+    transbordos = ["Mixcoac", "Zapata", "Centro Médico", "Balderas", "Tacubaya"]
+
+    # Lista de todas estaciones originales de la mapa (sin nodos tuplicados)
+    nombres = ['Observatorio', 'Tacubaya', 'Juanacatlán', 'Chapultepec', 'Sevilla', 'Insurgentes', 'Cuauhtémoc', 'Balderas', 
+               'Universidad', 'Copilco', 'Miguel Ángel de Quevedo', 'Viveros', 'Coyoacán', 'Zapata', 'División del Norte', 
+               'Eugenia', 'Etiopía', 'Centro Médico', 'Hospital General', 'Niños Héroes', 'Juárez', 'Barranca del Muerto', 
+               'Mixcoac', 'San Antonio', 'San Pedro de los Pinos', 'Constituyentes', 'Auditorio', 'Polanco', 'Patriotismo', 
+               'Chilpancingo', 'Lázaro Cárdenas', 'Insurgentes Sur', 'Hospital 20 de Noviembre', 'Parque de los Venados', 'Eje Central']
+
+
     
-    # Lista con las coordenadas de las estaciones
+    # Lista con las coordenadas de las estaciones 
+    # (orden coincidente con el orden de lista nombres)
     coords:List[Tuple[int]] = [
-        (161,382), (221,323), (280,264), (324,220), (368,175), (412,131),
-        (471,131), (530,131), (530,751), (530,707), (530,663), (530,618),
-        (530,574), (530,515), (530,471), (530,426), (530,383), (530,323),
-        (530,220), (530,176), (530,57), (221,588), (221,515), (221,456),
-        (221,412), (221,249), (221,175), (221,101), (339,323), (442,323),
-        (619,323), (309,515), (412,515), (633,515), (722,574)
-    ]
+        (161,382),#Observatorio
+        (221,323),#Tacubaya
+        (280,264),#Juanacatlan
+        (324,220),#Chapultepec
+        (368,175),#Sevilla
+        (412,131),#Insurgentes
+        (471,131),#Cuauhtemoc
+        (530,131),#Balderas
+        (530,751),#Universidad
+        (530,707),#Copilco
+        (530,663),#M. A. de Quevedo
+        (530,618),#Viveros
+        (530,574),#Coyoacan
+        (530,515),#Zapata
+        (530,471),#División del Norte
+        (530,426),#Eugenia
+        (530,383),#Etiopia
+        (530,323),#Centro Medico
+        (530,220),#Hospital General
+        (530,176),#Niños Heroes
+        (530,57),#Juarez
+        (221,588),#Barranca del Muerto
+        (221,515),#Mixcoac 
+        (221,456),#San Antonio
+        (221,412),#San Pedro de los Pinos
+        (221,249),#Constituyentes
+        (221,175),#Auditorio
+        (221,101),#Polanco
+        (339,323),#Patriotismo
+        (442,323),#Chilpancingo
+        (619,323),#Lazaro Cardenas
+        (309,515),#Insuegentes Sur
+        (412,515),#Hospital 20 de Noviembre
+        (633,515),#Parque de los Venados
+        (722,574)]#Eje Central
+
+
+
     
-    # ------ Inicialización de Pygame ------
+   # ------ Inicialización de Pygame y carga de imágenes ------
+
+    #Inicializa todos los módulos de Pygame que se necesitan
     pygame.init()
+
+    # Tamano de la mapa del metro
     size = (959,800)
+
+    #Crea la ventana donde se dibujará todo
     screen = pygame.display.set_mode((size))
-    pygame.display.set_caption("Metro CDMX")
+    pygame.display.set_caption("Metro CDMX") # Titulo de la ventana que aparece arriba
 
-    # ------ CONFIGURACIÓN DE RUTA DE IMÁGENES ------
-    # Usamos os.path.abspath para obtener la ruta absoluta del archivo actual
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    
-    # Definimos explícitamente la carpeta "assets"
-    assets_path = os.path.join(base_path, "assets")
-    
-    print(f"Buscando imágenes en: {assets_path}")
 
-    # Función auxiliar para cargar imágenes de forma segura
-    def cargar_imagen(nombre):
-        ruta_completa = os.path.join(assets_path, nombre)
-        if not os.path.exists(ruta_completa):
-            print(f"❌ ERROR CRÍTICO: No encuentro el archivo {nombre} en {assets_path}")
-            # Crear un cuadro rojo de error si falta la imagen para que no se cierre el programa
-            surf = pygame.Surface((50, 50))
-            surf.fill((255, 0, 0))
-            return surf
-        return pygame.image.load(ruta_completa)
+    # Images:
 
-    # Carga de imágenes usando la ruta definida
-    metroMap = cargar_imagen("metroMapCDMX.png").convert()
-    
-    startButton = cargar_imagen("start.png").convert_alpha()
+    # Obtener ruta a la carpeta de imagenes
+    img_path = os.path.join(os.path.dirname(__file__), "assets")
+    print(img_path)
+
+    # Cargar la imagen del mapa
+    metroMap = pygame.image.load(os.path.join(os.path.dirname(__file__), "assets", "metroMapCDMX.png")).convert()
+    # Boton start
+    startButton = pygame.image.load(os.path.join(img_path, "start.png")).convert_alpha()
+    # Ajusta el tamano del boton a (100, 50) pixeles
     startButton = pygame.transform.scale(startButton, (100, 50))
+    # Crea un rectángulo de colisión del mismo tamaño que la imagen de boton start, necesario para detectar clics
     startButtonRect = startButton.get_rect()
+    # Posicion donde el boton va a estar colocado
     startButtonPos = (100,710)
+    # Mueve el rectángulo a la misma posicion
     startButtonRect = startButtonRect.move(startButtonPos)
 
-    resetButton = cargar_imagen("reset.png").convert_alpha()
+    # Boton reset (hacer lo mismo que boton start)
+    resetButton = pygame.image.load(os.path.join(img_path, "reset.png")).convert_alpha()
     resetButton = pygame.transform.scale(resetButton, (50, 50))
     resetButtonRect = resetButton.get_rect()
     resetButtonPos = (100,710)
     resetButtonRect = resetButtonRect.move(resetButtonPos)
 
-    # -----------------------------------------------------------
+ 
+    # Dibujar los elementos en la ventana
+    screen.blit(metroMap, (0, 0)) #Dibuja la imagen del mapa en la esquina superior izquierda
+    screen.blit(startButton, startButtonPos) #Dibuja el botón Start encima del mapa
 
-    screen.blit(metroMap, (0, 0))
-    screen.blit(startButton, startButtonPos)
 
+    # Crea un objeto fuente para dibujar texto en la pantalla
     font = pygame.font.Font('freesansbold.ttf', 25)
+
+    # We render the texts
     text1 = font.render('Seleccione un origen', True, (0,0,0), (255,255,255))
     text2 = font.render('Seleccione un destino', True, (0,0,0), (255,255,255))
     text3 = font.render('Mostrando ruta...', True, (0,0,0), (255,255,255))
 
+    # We update the screen
+    # (flip updates the whole surface)
     pygame.display.flip()
 
-    # ------------ UI LOOP -------------
-    phase=0
-    
-    # Variables globales para el texto
+
+    # ------------ VARIABLES PARA DATOS DE RUTA ------------
+    # Las inicializamos vacías fuera del bucle principal
+    origen_temp = ""
+    destino_temp = ""
     str_info_dist = ""
     str_info_tiempo = ""
+    num_parada : int = 0
+
+    # ------------ UI LOOP con fases -------------
+
+    # Declaración de la variable fase
+    phase=0
+
+    # while True: bucle infinito, mantiene la ventana abierta hasta que el usuario cierre el programa
+    # 5 fases:
+    # Fase 0: boton start no ha sido clicked todavía (esperar a que el usuario presione Start)
+    # Fase 1: botón start ya ha sido clicked, hay que seleccionar estación de origen
+    # Fase 2: seleccionar estación de destino
+    # Fase 3: mostrar pasos de A*
+    # Fase 4: mostrar ruta final y botón Reset. Si clicked, ir a fase 1
 
     while True:
-        # Fase 0: Esperando Start
+
+        # Fase 0: boton start no ha sido clicked todavía
         if phase==0:
+            # Recorrer todos los eventos que ocurren (clics, teclado, cerrar ventana, etc)
             for event in pygame.event.get():
+
+                # If theres a click:
                 if event.type == pygame.MOUSEBUTTONUP: 
                     pos = pygame.mouse.get_pos()
-                    if startButtonRect.collidepoint(pos):
+                    # Verificar si el click fue en el buton start
+                    if startButtonRect.collidepoint(pos): #verifica si el clic fue dentro del rectangulo de la imagen botón Start
+
+                        # Update the screen
+                        # (blit draws an image on top of another)
                         screen.blit(metroMap, (0, 0))
                         screen.blit(text1, (100,710))
+
+                        # We draw the circles in the metro stations
                         for i in coords:
                             pygame.draw.circle(screen,(0,0,0),i,6)
                             pygame.draw.circle(screen,(255,255,255),i,3)
+                            
                         pygame.display.flip()
+
+                        # Cambia fase
                         phase=1
 
+                # Si el usuario cerró la ventana
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
 
-        # Fase 1: Seleccionar Origen
+
+        # Fase 1: botón start ya ha sido clicked, hay que seleccionar estación de origen
         elif phase==1:
                 for event in pygame.event.get():
                     if event.type == pygame.MOUSEBUTTONUP:
                         pos = pygame.mouse.get_pos()
+
+                        # We iterate through all the coords
                         for i in coords:
+                            # If click distance to the ith-station is less than 5, we detect a collision
                             if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
+
+                                # Save origin station
                                 origin = nombres[coords.index(i)]
                                 print("Origen seleccionado: ", origin)
+                                # Origin coords
                                 coordsOrigin = i
+
+                                # Actuaizar la ventana
                                 screen.blit(metroMap, (0, 0))
                                 screen.blit(text2, (100,710))
+
+                                # We redraw the station points, except for the origin
                                 for o in coords:
                                     pygame.draw.circle(screen,(0,0,0),o,6)
                                     pygame.draw.circle(screen,(255,255,255),o,3)
+
+                                # We redraw the origin in a different style
                                 pygame.draw.circle(screen,(0,0,0),i,7)
                                 pygame.display.flip()
+
+                                # Phase change
                                 phase =2
-                                break     
+                                break
+
+                    # Si el usuario cerró la ventana      
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit()
 
-        # Fase 2: Seleccionar Destino y CÁLCULOS
+        # Fase 2: seleccionar estación de destino
         elif phase==2:
                 for event in pygame.event.get():
                     if event.type == pygame.MOUSEBUTTONUP:
                         pos = pygame.mouse.get_pos()
                         for i in coords:
+                            # Collision detection
                             if abs(i[0]-pos[0])<=6 and abs(i[1]-pos[1])<=6:
+
+                                # Save destiny station
                                 destiny = nombres[coords.index(i)]
                                 print("Destiny seleccionado: ", destiny)
+                                # Destiny coords
                                 coordsDestiny = i
-                                
+                                # Redraw todos los elementos necesarios y actualizar la ventana
                                 screen.blit(metroMap, (0, 0))
+
+                                # We redraw the station points, except for the destiny
                                 for o in coords:
                                     pygame.draw.circle(screen,(0,0,0),o,6)
                                     pygame.draw.circle(screen,(255,255,255),o,3)
+
+                                # We redraw the origin and the destiny in a different style
                                 pygame.draw.circle(screen,(0,0,0),coordsOrigin,7)
                                 pygame.draw.circle(screen,(0,0,0),coordsDestiny,7)
+
                                 screen.blit(text3, (100,710))
                                 pygame.display.flip()
+
+
+                                # -------Aquí calculamos ruta optima con algoritmo A* y con la función caminoOptimo_limpio------------
+                                # 1. Prepara el grafo para origen y destino que sean transbordos
+                                origen_temp, destino_temp = preparar_grafo_transbordos(grafo, origin, destiny, transbordos)
+                                # 2. Obtener ruta óptima limpia y final
+                                intermediatePath, route = algorithm(grafo, heuristic, origen_temp, destino_temp) #It returns an intermediatePath (the steps taken by the algorithm) and a route optimo 
+                                route_final, num_parada = caminoOptimo_limpio(route) #route_final es la ruta final, óptima y limpia
+
+                                # 3. Calculo de tiempo y distancia (usando camino no limpiado)
+                                str_info_dist = f"Distancia: {lengthCaminoOptimo(grafo, route)} km"
+                                str_info_tiempo = f"Tiempo: {tiempoCaminoOptimo(grafo, route, 22, num_parada)} min"
+
+                                # 4. Elimina los nodos temporales creados en la preparación del grafo, para dejarlo como antes
+                                eliminar_nodos_temporales(grafo)
+                            
+                                # IMPRIMIR EN TERMINAL
+                                print("\nResultados del cálculo:")
+                                print(str_info_dist)
+                                print(str_info_tiempo)
+                                print("Camino optimo no limpiado:", route)
+                                print("Número de paradas intermedias: ", num_parada-1)
+                                print("-----------------------\n")
+
+
+                                # Phase change
                                 phase=3
 
-                                route = algorithm(origin, destiny)
-
-                                # --- CÁLCULOS ---
-                                VELOCIDAD_MS = 11.11
-                                TIEMPO_PARADA_MIN = 0.5
-                                total_metros = 0
-                                try:
-                                    for k in range(len(route) - 1):
-                                        total_metros += grafo[route[k]][route[k+1]]['weight']
-                                except KeyError:
-                                    total_metros = 0
-
-                                tiempo_viaje_min = (total_metros / VELOCIDAD_MS) / 60
-                                num_paradas = max(0, len(route) - 2)
-                                tiempo_total_min = round(tiempo_viaje_min + (num_paradas * TIEMPO_PARADA_MIN), 1)
-                                dist_km = round(total_metros / 1000, 2)
-
-                                str_info_dist = f"Distancia: {dist_km} km"
-                                str_info_tiempo = f"Tiempo aprox: {tiempo_total_min} min"
-                                print(f"Ruta: {route}\n{str_info_dist}\n{str_info_tiempo}")
-                                # ----------------
                                 break
 
+                    # Si el usuario cerró la ventana
                     if event.type == pygame.QUIT:
                         pygame.quit()
                         sys.exit()
 
-        # Fase 3: Animación
+        # Fase 3: mostrar pasos de A*
         elif phase==3:
+
             for event in pygame.event.get():
+                 # Si el usuario cerró la ventana
                  if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
             
-            for station in route:
-                await asyncio.sleep(0.5)
+            # Draw lights until all the stations are drawn.
+            # In this loop se demuestra por orden las estaciones uno a uno
+            print("Ruta optima: ", route_final)
+            for station in route_final:
+                await asyncio.sleep(0.5) # Time between drawings of stations
                 pygame.draw.circle(screen,(255, 51, 153),coords[nombres.index(station)],7)
                 pygame.draw.circle(screen,(0,0,0),coords[nombres.index(station)],3)
                 pygame.display.flip()
+                
             
+            # phase change
             phase=4
         
-        # Fase 4: Resultado y Caja Blanca
+        # Fase 4: mostrar ruta final y botón Reset. Si clicked, ir a fase 1
         elif phase==4:
+            # We reset the drawings
             screen.blit(metroMap, (0, 0))
-            for station in route:
+            
+            # We draw the (final) path
+            for station in route_final:
                 pygame.draw.circle(screen,(255, 255, 0),coords[nombres.index(station)],7)
                 pygame.draw.circle(screen,(0,0,0),coords[nombres.index(station)],3)
+            # We draw the reset button
             screen.blit(resetButton, resetButtonPos)
 
-            # --- DIBUJO CAJA BLANCA ---
-            caja_x, caja_y = 170, 670
-            ancho_caja, alto_caja = 300, 75
 
+            # B) Dibujamos el Rectángulo Blanco
+            caja_x = 180 
+            caja_y = 660  
+            ancho_caja = 300
+            alto_caja = 70
             pygame.draw.rect(screen, (255, 255, 255), (caja_x, caja_y, ancho_caja, alto_caja))
-            pygame.draw.rect(screen, (0, 0, 0), (caja_x, caja_y, ancho_caja, alto_caja), 2)
+            pygame.draw.rect(screen, (0, 0, 0), (caja_x, caja_y, ancho_caja, alto_caja), 2) # Borde
 
-            if str_info_dist == "": str_info_dist = "Calculando..."
+            # C) Renderizamos el texto
+            if str_info_dist == "": str_info_dist = "Error: Sin datos"
             
-            t_dist = font.render(str_info_dist, True, (0, 0, 0))
-            t_time = font.render(str_info_tiempo, True, (0, 0, 0))
+            texto_distancia = font.render(str_info_dist, True, (0, 0, 0))
+            texto_tiempo = font.render(str_info_tiempo, True, (0, 0, 0))
 
-            screen.blit(t_dist, (caja_x + 10, caja_y + 10))
-            screen.blit(t_time, (caja_x + 10, caja_y + 35))
-            # --------------------------
+            # D) Pegamos el texto (usamos caja_y para que se mueva junto con la caja)
+            screen.blit(texto_distancia, (caja_x + 10, caja_y + 10))
+            screen.blit(texto_tiempo, (caja_x + 10, caja_y + 35))
 
+            # We update the screen
             pygame.display.flip()
 
+            # We are now going to check if the reset button has been clicked
             for event in pygame.event.get():
+                # If theres a click:
                 if event.type == pygame.MOUSEBUTTONUP:
                     pos = pygame.mouse.get_pos()
-                    if resetButtonRect.collidepoint(pos):
+                    # We check if the click was in the reset button
+                    if resetButtonRect.collidepoint(pos): # This checks if the click was inside the rectangle of the image
+                        # We reset the GUI
                         screen.blit(metroMap, (0, 0))
                         screen.blit(startButton, startButtonPos)
                         pygame.display.flip()
-                        str_info_dist = ""
-                        str_info_tiempo = ""
-                        phase=0
+                        phase=0 #Cambia fase a cero para empezar el proceso de nuevo
                 
+                # Si el usuario cerró la ventana
                 if event.type == pygame.QUIT:
                     pygame.quit()
                     sys.exit()
 
         await asyncio.sleep(0)
 
-    
-
-
 async def main():
-    # 1. Obtenemos los datos del metro
+    # Obtenemos los datos creando un grafo del metro
     print("Cargando datos del metro...")
-    metro_grafo = getMetro()  # Ahora getMetro() está en el mismo archivo
+    metro_grafo = getMetro()
 
-    # 2. Inicializamos el algoritmo
-    inicializar_algoritmo(metro_grafo)  # Ahora está en el mismo archivo
 
-    # 3. Lanzamos la interfaz gráfica
-    print("Iniciando interfaz gráfica...")
-    await initGUI(metro_grafo, caminoOptimo)  # Ahora está en el mismo archivo
+    # Lanzamos la interfaz grafica (VISTA)
+    # Le pasamos el grafo (para pintar estaciones), la funcion Astar (para calcular rutas) y la funcion heuristica
+    print("Iniciando interfaz grafica...")
+    await initGUI(metro_grafo, AStar, h_distanciaHaversiana)
 
-    # Bucle infinito
+    # Bucle infinito final para mantener vivo el proceso async (requerido por pygbag)
     while True:
         await asyncio.sleep(0)
 
